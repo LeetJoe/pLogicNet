@@ -27,28 +27,38 @@ class KGEModel(nn.Module):
         self.nrelation = nrelation
         self.hidden_dim = hidden_dim
         self.epsilon = 2.0
-        
+
+        # todo 把 gamma 转化成了一个 Parameter ？
         self.gamma = nn.Parameter(
             torch.Tensor([gamma]), 
             requires_grad=False
         )
-        
+
+        # todo embedding range ?
         self.embedding_range = nn.Parameter(
             torch.Tensor([(self.gamma.item() + self.epsilon) / hidden_dim]), 
             requires_grad=False
         )
-        
+
+        # todo 需要加倍直接传参不就可以了，单独弄个 double_* 参数控制何必呢？
         self.entity_dim = hidden_dim*2 if double_entity_embedding else hidden_dim
         self.relation_dim = hidden_dim*2 if double_relation_embedding else hidden_dim
-        
+
+        # 初始化实体嵌入的矩阵
+        # nn.Parameter() 这个函数，正如之前发现的那样，它用来存放一些 tensor 型的数据，能在 parameters() 遍历中找到它，所以它通常起辅助作用，
+        # 用来存放那些在训练中要用到的非模型本身的 tensors 如一些参数或者中间状态等，而且如果需要将它存储到 pth 文件中的时候，也很方便找到它。
         self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim))
+
+        # uniform_ 是指 uniform distribution, 使用均匀分布来初始化填充输入的 tensor, a 是它的下限, b 是它的上限。
         nn.init.uniform_(
             tensor=self.entity_embedding, 
             a=-self.embedding_range.item(), 
             b=self.embedding_range.item()
         )
-        
+
+        # 初始化 relation 的嵌入矩阵
         self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim))
+
         nn.init.uniform_(
             tensor=self.relation_embedding, 
             a=-self.embedding_range.item(), 
