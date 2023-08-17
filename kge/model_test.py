@@ -64,20 +64,23 @@ class KGEModel(nn.Module):
             a=-self.embedding_range.item(), 
             b=self.embedding_range.item()
         )
-        
+
+        # todo 如果是 pRotatE, 需要另外定义一个参数 self.modules
         if model_name == 'pRotatE':
             self.modulus = nn.Parameter(torch.Tensor([[0.5 * self.embedding_range.item()]]))
-        
+
         #Do not forget to modify this line when you add a new model in the "forward" function
         if model_name not in ['TransE', 'DistMult', 'ComplEx', 'RotatE', 'pRotatE']:
             raise ValueError('model %s not supported' % model_name)
-            
+
+        # 原来这个 double_xxx 是跟着模型走的，对于某些模型，必须把维度加倍。todo 虽然还不清楚为什么
         if model_name == 'RotatE' and (not double_entity_embedding or double_relation_embedding):
             raise ValueError('RotatE should use --double_entity_embedding')
 
+        # 同上
         if model_name == 'ComplEx' and (not double_entity_embedding or not double_relation_embedding):
             raise ValueError('ComplEx should use --double_entity_embedding and --double_relation_embedding')
-        
+
     def forward(self, sample, mode='single'):
         '''
         Forward function that calculate the score of a batch of triples.
@@ -87,11 +90,16 @@ class KGEModel(nn.Module):
         And the second part is the entities in the negative samples.
         Because negative samples and positive samples usually share two elements 
         in their triple ((head, relation) or (relation, tail)).
+
+        head-batch 里，positive 和 negative 的 head 和 relation 是相同的；
+        tail-batch 里，positive 和 negative 的 relation 和 tail 是相同的；
         '''
 
         if mode == 'single':
+            # 取的是 batch 和 negative sample
             batch_size, negative_sample_size = sample.size(0), 1
-            
+
+            # 下面这三句应该都是形成的是一个 m * n 的矩阵，m 是数据量，n 是嵌入表示的维度
             head = torch.index_select(
                 self.entity_embedding, 
                 dim=0, 
@@ -109,27 +117,28 @@ class KGEModel(nn.Module):
                 dim=0, 
                 index=sample[:,2]
             ).unsqueeze(1)
-            
+
+        #
         elif mode == 'head-batch':
-            tail_part, head_part = sample
+            tail_part, head_part = sample   # todo 这是什么表达方式？
             batch_size, negative_sample_size = head_part.size(0), head_part.size(1)
             
             head = torch.index_select(
                 self.entity_embedding, 
                 dim=0, 
-                index=head_part.view(-1)
+                index=head_part.view(-1)   # todo -1 is head ?
             ).view(batch_size, negative_sample_size, -1)
             
             relation = torch.index_select(
                 self.relation_embedding, 
                 dim=0, 
-                index=tail_part[:, 1]
+                index=tail_part[:, 1]   # todo 1 is relation ?
             ).unsqueeze(1)
             
             tail = torch.index_select(
                 self.entity_embedding, 
                 dim=0, 
-                index=tail_part[:, 2]
+                index=tail_part[:, 2]   # todo 2 is tail ?
             ).unsqueeze(1)
             
         elif mode == 'tail-batch':
@@ -139,24 +148,25 @@ class KGEModel(nn.Module):
             head = torch.index_select(
                 self.entity_embedding, 
                 dim=0, 
-                index=head_part[:, 0]
+                index=head_part[:, 0]   # todo 0 is head ?
             ).unsqueeze(1)
             
             relation = torch.index_select(
                 self.relation_embedding,
                 dim=0,
-                index=head_part[:, 1]
+                index=head_part[:, 1]  # todo 1 is relation ?
             ).unsqueeze(1)
             
             tail = torch.index_select(
                 self.entity_embedding, 
                 dim=0, 
-                index=tail_part.view(-1)
+                index=tail_part.view(-1)  # todo -1 is tail ?
             ).view(batch_size, negative_sample_size, -1)
             
         else:
             raise ValueError('mode %s not supported' % mode)
-            
+
+        # 按 model name 确定 score 的计算函数
         model_func = {
             'TransE': self.TransE,
             'DistMult': self.DistMult,
@@ -171,13 +181,18 @@ class KGEModel(nn.Module):
             raise ValueError('model %s not supported' % self.model_name)
         
         return score
-    
+
     def TransE(self, head, relation, tail, mode):
         if mode == 'head-batch':
             score = head + (relation - tail)
         else:
             score = (head + relation) - tail
 
+        # norm 这里是指“范数”，p 为数字时，表示的是向量范数 p-norm. 当 p=1 时，表示对 score 的所有元素的绝对值求和。
+        # todo 注意这里的 dim，跟其它地方出现的 dim 一样，不要直接把它用行、列这种直观的方式来认识，容易出现混乱，要用列出 shape 的方式来理解。
+        #   如 a.shape=[3, 4], 当 dim=0 时，其含义是在第 0 维上进行求合，进行4次数字个数为3的求合，得到一个4(相当于把shape=[3,4]里的第0维3给消除了)维向量；
+        #   若 dim=1 ，就是进行3次数字个数为4的求合，得到一个3(相当于把shape=[3, 4]里的第1维4给消除了)维向量。对更高维的处理更直观，比如一个 shape=[3,4,5]
+        #   的矩阵按 dim=0 求范数，将得到一个 shape=[4,5] 的结果；dim=1时，结果 shape=[3, 5]; dim=2 时结果 shape=[3,4]
         score = self.gamma.item() - torch.norm(score, p=1, dim=2)
         return score
 

@@ -47,7 +47,7 @@ def parse_args(args=None):
     parser.add_argument('--workspace_path', type=str, default=None)
     parser.add_argument('--model', default='TransE', type=str)
 
-    # todo 这两个是额外增加 embedding 的维数的意思？
+    # 这两个是额外增加 embedding 的维数的意思
     parser.add_argument('-de', '--double_entity_embedding', action='store_true')
     parser.add_argument('-dr', '--double_relation_embedding', action='store_true')
 

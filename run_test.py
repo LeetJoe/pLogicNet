@@ -132,33 +132,78 @@ def save_cmd(save_path):
         fo.write('weight: {}\n'.format(weight))
 
 # 每次运行都单独记录结果，包括所执行的命令的参数组合
+'''
 time = str(datetime.datetime.now()).replace(' ', '_')
 path = path + '/' + time
 ensure_dir(path)
 save_cmd('{}/cmd.txt'.format(path))
+'''
+path = './record/2023-08-16_16:56:00.007952'
 
 # ------------------------------------------
 
 # 每次也把相应的数据集的 train.txt 文件也复制一份到新建的目录里
-os.system('cp {}/train.txt {}/train.txt'.format(dataset, path))
-# train_augmented.txt 初始使用 train.txt
-os.system('cp {}/train.txt {}/train_augmented.txt'.format(dataset, path))
-# 基于 train.txt 生成 hidden.txt 和 mln_saved.txt
-os.system(cmd_mln(path, preprocessing=True))
+# cp data/FB15k/train.txt ./record/2023-08-16_16:56:00.007952/train.txt
+str_cmd = 'cp {}/train.txt {}/train.txt'.format(dataset, path)
+print(str_cmd)
+# os.system(str_cmd)
 
+# train_augmented.txt 初始使用 train.txt
+# cp data/FB15k/train.txt ./record/2023-08-16_16:56:00.007952/train_augmented.txt
+str_cmd = 'cp {}/train.txt {}/train_augmented.txt'.format(dataset, path)
+print(str_cmd)
+# os.system(str_cmd)
+
+# 基于 train.txt 生成 hidden.txt 和 mln_saved.txt
+# ./mln/mln -observed ./record/2023-08-16_xxx/train.txt -out-hidden ./record/2023-08-16_xxx/hidden.txt
+#   -save ./record/2023-08-16_16:56:00.007952/mln_saved.txt -thresh-rule 0.1 -iterations 0 -threads 8
+str_cmd = cmd_mln(path, preprocessing=True)
+print(str_cmd)
+# os.system(str_cmd)
+
+
+print('(......start iterations......)')
 for k in range(iterations):
+    print('(......iterations {}/{}......)'.format(str(k+1), str(iterations)))
+
     # 如果执行多次迭代，每一次迭代的结果也都单独记录
     workspace_path = path + '/' + str(k)
     ensure_dir(workspace_path)
 
-    os.system('cp {}/train_augmented.txt {}/train_kge.txt'.format(path, workspace_path))
-    os.system('cp {}/hidden.txt {}/hidden.txt'.format(path, workspace_path))
-    os.system(cmd_kge(workspace_path, kge_model))
+    # cp ./record/2023-08-16_xxx/train_augmented.txt ./record/2023-08-16_xxx/0/train_kge.txt
+    str_cmd = 'cp {}/train_augmented.txt {}/train_kge.txt'.format(path, workspace_path)
+    print(str_cmd)
+    # os.system(str_cmd)
 
-    os.system(cmd_mln(path, workspace_path, preprocessing=False))
+    # cp ./record/2023-08-16_xxx/hidden.txt ./record/2023-08-16_xxx/0/hidden.txt
+    str_cmd = 'cp {}/hidden.txt {}/hidden.txt'.format(path, workspace_path)
+    print(str_cmd)
+    # os.system(str_cmd)
+
+    # ./kge/kge_test.sh train TransE data/FB15k 0 1024 256 1000 24.0 1.0 0.0001 150000 16 ./record/2023-08-16_xxx/0 100
+    str_cmd = cmd_kge(workspace_path, kge_model)
+    print(str_cmd)
+    # os.system(str_cmd)
+
+    # ./mln/mln -load ./record/2023-08-16_xxx/mln_saved.txt -probability ./record/2023-08-16_xxx/0/annotation.txt
+    #   -out-prediction ./record/2023-08-16_xxx/0/pred_mln.txt -out-rule ./record/2023-08-16_xxx/0/rule.txt
+    #   -thresh-triplet 1 -iterations 1000 -lr 0.0001 -threads 8
+    str_cmd = cmd_mln(path, workspace_path, preprocessing=False)
+    print(str_cmd)
+    # os.system(str_cmd)
+
     # 把 pred_mln.txt 里概率大于 threshold 的三元组作为新的三元组和 train.txt 里的数据一起组成 train_augmented.txt 里的三元组数据
-    augment_triplet('{}/pred_mln.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
-    # 将更新过的 train_augmented.txt 文件复制回 path 将原始的文件覆盖，下次迭代会用它来生成 kge
-    os.system('cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path))
+    print('(......augment triplet......)')
+    # augment_triplet('{}/pred_mln.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
 
-    evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.txt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
+    # 将更新过的 train_augmented.txt 文件复制回 path 将原始的文件覆盖，下次迭代会用它来生成 kge
+    # cp ./record/2023-08-16_xxx/0/train_augmented.txt ./record/2023-08-16_xxx/train_augmented.txt
+    str_cmd = 'cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path)
+    print(str_cmd)
+    # os.system(str_cmd)
+
+    # 最终评估：计算 MRR, Hit@K 等
+    print('(......evaluate......)')
+    # evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.txt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
+
+print('(......done......)')
