@@ -717,7 +717,7 @@ void search_hidden_triplets()
 void read_probability_of_hidden_triplets()
 {
     // 里面的语句执行的操作是重新生成 triplet2id 和 h2rt，todo 应该是用来应对 triplets 增加了隐三元组的情况
-    if (probability_file[0] == 0)
+    if (probability_file[0] == 0) // todo 这句貌似用来在不使用 kge 生成的 annotations.txt 的情况下来完成对 valid 和 truth 的赋值. 可能是用来做对比的?
     {
         Pair ent_rel_pair;
         
@@ -1209,10 +1209,10 @@ void output_predictions()
     fclose(fo);
 }
 
-// 训练组织, 实际的"训练"还是在 train_epoch 里面完成的. todo neosong
+// 核心方法, 训练组织, 实际的"训练"还是在 train_epoch 里面完成的.
 void train()
 {
-    if (load_file[0] == 0)
+    if (load_file[0] == 0)  // 如果是预处理
     {
         // Read observed triplets
         read_data();
@@ -1223,20 +1223,21 @@ void train()
         // Search for hidden triplets with the extracted logic rules
         search_hidden_triplets();
     }
-    else
+    else // 非预处理的情况会指定 load 参数
     {
         load();
     }
-    
+
+    // 下面两个方法都只在预处理中有效, 非预处理因为参少参数会直接 return
     save();
     output_hidden_triplets();
 
-    if (iterations == 0) return;
+    if (iterations == 0) return; // 预处理中会传 0, 也就是预处理到这里就直接返回了 todo 好草率的写法
 
     // Read the probability of hidden triplets predicted by KGE models
-    read_probability_of_hidden_triplets();
+    read_probability_of_hidden_triplets(); // 从 annotations.txt 文件中读取 kge 生成的 probability, 也可以不使用 kge(可能是用来做对比的).
     // Link each triplet to logic rules which can extract the triplet
-    link_rules();
+    link_rules();  // 填充 rule_ids 的方法
     // Initialize the weight of logic rules randomly
     init_weight();
     for (int k = 0; k != iterations; k++)
@@ -1248,12 +1249,13 @@ void train()
     output_predictions();
 }
 
+// 返回要查找的参数 *str 的位置, 返回值 +1 就得到对应参数值的位置
 int ArgPos(char *str, int argc, char **argv)
 {
     int a;
-    for (a = 1; a < argc; a++) if (!strcmp(str, argv[a])) 
+    for (a = 1; a < argc; a++) if (!strcmp(str, argv[a]))   // 当 str 与 argv[a] 相等的时候, strcmp 返回 0
     {
-        if (a == argc - 1) 
+        if (a == argc - 1) // todo 由于这个方法识别的是参数标识, 后面会从 +1 的位置找参数值, a 如果是最后一个参数是一行的. 好 TM 粗糙的写法
         {
             printf("Argument missing for %s\n", str);
             exit(1);
