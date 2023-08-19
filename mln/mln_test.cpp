@@ -135,7 +135,7 @@ long long total_count = 0;
 std::map<std::string, int> ent2id, rel2id;
 std::vector<std::string> id2ent, id2rel; // todo 为什么用 vector?
 std::vector<Triplet> triplets;
-std::vector<Pair> *h2rt = NULL;
+std::vector<Pair> *h2rt = NULL; // 组织为 head 和从 head 出发的 <rel, tail> 对, 主要用于在已知 head 的情况下, 对下一步路径的遍历
 std::set<Rule> candidate_rules;
 std::vector<Rule> rules;
 std::set<Triplet> observed_triplets, hidden_triplets;
@@ -815,7 +815,7 @@ void read_probability_of_hidden_triplets()
     }
 }
 
-//
+// 参数的 id 是某个 rule 的 id, 此函数用于查找所有三元组(valid=0的除外)中满足此 rule 的 hypothesis 的三元组, 并将此 id 加入到三元组的 rule_ids 里
 void link_composition_rule(int id)
 {
     int tid, h, mid, t;
@@ -850,6 +850,7 @@ void link_composition_rule(int id)
     }
 }
 
+// 同上,将 id 加入到符合条件的三元组的 rule_ids 里
 void link_symmetric_rule(int id)
 {
     int tid, h, t, rp, rh;
@@ -874,6 +875,7 @@ void link_symmetric_rule(int id)
     }
 }
 
+// 同上
 void link_inverse_rule(int id)
 {
     int tid, h, t, rp, rh;
@@ -898,6 +900,7 @@ void link_inverse_rule(int id)
     }
 }
 
+// 同上
 void link_subrelation_rule(int id)
 {
     int tid, h, t, rp, rh;
@@ -922,6 +925,7 @@ void link_subrelation_rule(int id)
     }
 }
 
+// 完成三元组的 rule_ids 的构建的线程函数
 void *link_rules_thread(void *id)
 {
     int thread = int((long)(id));
@@ -947,6 +951,7 @@ void *link_rules_thread(void *id)
     pthread_exit(NULL);
 }
 
+// 线程分派函数
 void link_rules()
 {
     sem_init(&mutex, 0, 1);
@@ -959,113 +964,86 @@ void link_rules()
     printf("Data preprocessing done!          \n");
 }
 
+// 为所有规则随机初始化权重 weight
 void init_weight()
 {
     for (int k = 0; k != rule_size; k++)
     rules[k].weight = (rand() / double(RAND_MAX) - 0.5) / 100;
 }
 
+// todo 这里所谓的 train 就是通过 weight 和 len 来计算 logit, 再使用 truth 和 logit 来计算 grad, 最后用 lr 和 grad 来更新 weight
 double train_epoch(double lr)
 {
     double error = 0, cn = 0;
     
-    for (int k = 0; k != rule_size; k++) rules[k].grad = 0;
+    for (int k = 0; k != rule_size; k++) rules[k].grad = 0; // 初始化 rule.grad todo 每次 epoch 都要重新初始化(重置)?
     
     for (int k = 0; k != triplet_size; k++)
     {
         int len = int(triplets[k].rule_ids.size());
-        if (len == 0) continue;
+        if (len == 0) continue; // 如果没有应用到此三元组上的规则则跳过.
         
-        triplets[k].logit = 0;
+        triplets[k].logit = 0; // 初始化 triplet.logit=0
         for (int i = 0; i != len; i++)
         {
             int rule_id = triplets[k].rule_ids[i];
+            // 三元组的 logit 是它匹配到的所有规则的权重的平均值 todo 这里需要进一步理解一下
             triplets[k].logit += rules[rule_id].weight / len;
         }
-        
+
+        // 标准 sigmoid 方法
         triplets[k].logit = sigmoid(triplets[k].logit);
         for (int i = 0; i != len; i++)
         {
             int rule_id = triplets[k].rule_ids[i];
-            rules[rule_id].grad += (triplets[k].truth - triplets[k].logit) / len;
+            rules[rule_id].grad += (triplets[k].truth - triplets[k].logit) / len; // todo 这里是 grad 的计算方式, 需要进一步理解下
         }
-        
+
+        // error 最终是所有 triplets 的 truth-logic 的平方和
         error += (triplets[k].truth - triplets[k].logit) * (triplets[k].truth - triplets[k].logit);
         cn += 1;
     }
     
-    for (int k = 0; k != rule_size; k++) rules[k].weight += lr * rules[k].grad;
-    
+    for (int k = 0; k != rule_size; k++) rules[k].weight += lr * rules[k].grad; // 将 grad 加到 weight 上
+
+    // 返回的是均方差的平方根 todo MSE? 这种可以称为标准差吗?
     return sqrt(error / cn);
 }
 
-void output_rules()
-{
-    if (output_rule_file[0] == 0) return;
-    
-    FILE *fo = fopen(output_rule_file, "wb");
-    for (int k = 0; k != rule_size; k++)
-    {
-        std::string type = rules[k].type;
-        double weight = rules[k].weight;
-        
-        fprintf(fo, "%s\t%s\t", type.c_str(), id2rel[rules[k].r_hypothesis].c_str());
-        for (int i = 0; i != int(rules[k].r_premise.size()); i++)
-        fprintf(fo, "%s\t", id2rel[rules[k].r_premise[i]].c_str());
-        fprintf(fo, "%lf\n", weight);
-    }
-    fclose(fo);
-}
-
-void output_predictions()
-{
-    if (output_prediction_file[0] == 0) return;
-    
-    FILE *fo = fopen(output_prediction_file, "wb");
-    for (int k = 0; k != triplet_size; k++)
-    {
-        if (triplets[k].type == 'o') continue;
-        
-        int h = triplets[k].h;
-        int t = triplets[k].t;
-        int r = triplets[k].r;
-        double prob = triplets[k].logit;
-        
-        fprintf(fo, "%s\t%s\t%s\t%lf\n", id2ent[h].c_str(), id2rel[r].c_str(), id2ent[t].c_str(), prob);
-    }
-    fclose(fo);
-}
-
+// 对应参数 out-hidden, 仅在 mln 预处理中使用, 是一个带相对路径的文件名, 示例用的是 hidden.txt
+// 格式为(per line): head relation tail , 只要 type 不为 o 的都输出
 void output_hidden_triplets()
 {
     if (output_hidden_file[0] == 0) return;
-    
+
     FILE *fo = fopen(output_hidden_file, "wb");
     for (int k = 0; k != triplet_size; k++)
     {
         if (triplets[k].type == 'o') continue;
-        
+
         int h = triplets[k].h;
         int t = triplets[k].t;
         int r = triplets[k].r;
-        
+
         fprintf(fo, "%s\t%s\t%s\n", id2ent[h].c_str(), id2rel[r].c_str(), id2ent[t].c_str());
     }
     fclose(fo);
 }
 
+// 对应参数为 save, 仅在预处理过程中使用, 传参是一个带相对路径的文件名, 示例里使用的是 mln_saved.txt
+// 格式为依次全输出所有的 entity(id name)/relation(id name)/triplet(head_name relation_name tail_name type valid)
 void save()
 {
     if (save_file[0] == 0) return;
-    
+
     FILE *fo = fopen(save_file, "wb");
-    
+
     fprintf(fo, "%d\n", entity_size);
     for (int k = 0; k != entity_size; k++) fprintf(fo, "%d\t%s\n", k, id2ent[k].c_str());
-    
+
     fprintf(fo, "%d\n", relation_size);
     for (int k = 0; k != relation_size; k++) fprintf(fo, "%d\t%s\n", k, id2rel[k].c_str());
-    
+
     fprintf(fo, "%d\n", triplet_size);
     for (int k = 0; k != triplet_size; k++)
     {
@@ -1074,36 +1052,38 @@ void save()
         int t = triplets[k].t;
         char type = triplets[k].type;
         int valid = triplets[k].valid;
-        
+
         fprintf(fo, "%s\t%s\t%s\t%c\t%d\n", id2ent[h].c_str(), id2rel[r].c_str(), id2ent[t].c_str(), type, valid);
     }
-    
+
     fprintf(fo, "%d\n", rule_size);
     for (int k = 0; k != rule_size; k++)
     {
         std::string type = rules[k].type;
         double weight = rules[k].weight;
-        
+
         fprintf(fo, "%s\t%lf\t%s\t%d\t", type.c_str(), rules[k].precision, id2rel[rules[k].r_hypothesis].c_str(), int(rules[k].r_premise.size()));
         for (int i = 0; i != int(rules[k].r_premise.size()); i++)
         fprintf(fo, "%s\t", id2rel[rules[k].r_premise[i]].c_str());
         fprintf(fo, "%lf\n", weight);
     }
-    
+
     fclose(fo);
 }
 
+// 对应于 -load 参数, 仅在非预处理过程中使用, 与 save 方法相对应, 用于加载 save 保存得到的 mln_saved.txt 文件
+// 通过加载文件, 完成 ent2id, id2ent, rel2id, id2rel, triplets, h2rt(根据 valid != 0), rules 的初始化
 void load()
 {
     if (load_file[0] == 0) return;
-    
+
     FILE *fi = fopen(load_file, "rb");
     if (fi == NULL)
     {
         printf("ERROR: loading file not found!\n");
         exit(1);
     }
-    
+
     fscanf(fi, "%d", &entity_size);
     id2ent.clear(); ent2id.clear();
     int eid; char s_ent[MAX_STRING];
@@ -1113,7 +1093,7 @@ void load()
         id2ent.push_back(s_ent);
         ent2id[s_ent] = eid;
     }
-    
+
     fscanf(fi, "%d", &relation_size);
     id2rel.clear(); rel2id.clear();
     int rid; char s_rel[MAX_STRING];
@@ -1123,7 +1103,7 @@ void load()
         id2rel.push_back(s_rel);
         rel2id[s_rel] = rid;
     }
-    
+
     fscanf(fi, "%d", &triplet_size);
     triplets.clear();
     observed_triplets.clear();
@@ -1141,7 +1121,7 @@ void load()
         triplet.h = h; triplet.r = r; triplet.t = t; triplet.type = t_type; triplet.valid = valid;
         triplet.rule_ids.clear();
         triplets.push_back(triplet);
-        
+
         if (t_type == 'o')
         {
             observed_triplets.insert(triplet);
@@ -1151,13 +1131,13 @@ void load()
         {
             hidden_triplet_size += 1;
         }
-        
+
         if (valid == 0) continue;
         ent_rel_pair.e = t;
         ent_rel_pair.r = r;
         h2rt[h].push_back(ent_rel_pair);
     }
-    
+
     fscanf(fi, "%d", &rule_size);
     rules.clear();
     Rule rule;
@@ -1177,9 +1157,9 @@ void load()
         fscanf(fi, "%lf", &rule.weight);
         rules.push_back(rule);
     }
-    
+
     fclose(fi);
-    
+
     printf("#Entities: %d          \n", entity_size);
     printf("#Relations: %d          \n", relation_size);
     printf("#Observed triplets: %d          \n", observed_triplet_size);
@@ -1188,6 +1168,48 @@ void load()
     printf("#Rules: %d          \n", rule_size);
 }
 
+// 对应于 out-rule 参数, 传递一个带相对路径的文件名, 示例里的命名是 rule.txt 仅在非预处理中使用
+// 文件结构为: type(如 composition 等) r_hypothesis(只有一个) r_premise(根据type有一个或两个) weight([-1, 1]内的小数)
+void output_rules()
+{
+    if (output_rule_file[0] == 0) return;
+    
+    FILE *fo = fopen(output_rule_file, "wb"); // wb 应该表示 write binary
+    for (int k = 0; k != rule_size; k++)
+    {
+        std::string type = rules[k].type;
+        double weight = rules[k].weight;
+        
+        fprintf(fo, "%s\t%s\t", type.c_str(), id2rel[rules[k].r_hypothesis].c_str());
+        for (int i = 0; i != int(rules[k].r_premise.size()); i++)
+        fprintf(fo, "%s\t", id2rel[rules[k].r_premise[i]].c_str());
+        fprintf(fo, "%lf\n", weight);
+    }
+    fclose(fo);
+}
+
+// 对应于参数 out-prediction, 一个带相对路径的文件名, 示例里给的是 pred_mln.txt. 仅在非 mln 预处理中使用
+// 输出格式为(per line): head relation tail probability
+void output_predictions()
+{
+    if (output_prediction_file[0] == 0) return;
+    
+    FILE *fo = fopen(output_prediction_file, "wb");
+    for (int k = 0; k != triplet_size; k++)
+    {
+        if (triplets[k].type == 'o') continue;  // 原有的三元组跳过
+        
+        int h = triplets[k].h;
+        int t = triplets[k].t;
+        int r = triplets[k].r;
+        double prob = triplets[k].logit;
+        
+        fprintf(fo, "%s\t%s\t%s\t%lf\n", id2ent[h].c_str(), id2rel[r].c_str(), id2ent[t].c_str(), prob);
+    }
+    fclose(fo);
+}
+
+// 训练组织, 实际的"训练"还是在 train_epoch 里面完成的. todo neosong
 void train()
 {
     if (load_file[0] == 0)
