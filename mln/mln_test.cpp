@@ -708,27 +708,34 @@ void search_hidden_triplets()
     printf("#Triplets: %d          \n", triplet_size);
 }
 
-// todo neosong
+
+// 对应于 probability 参数，在执行 mln 预处理的时候，此参数未使用，这时它会使用下面的默认值 probability_file[0] = 0
+// 更新 triplets 里所有三元组的 valid/truth 值, 重新生成 triplet2id 和 h2rt 两个变量. 其中 triplet2id 重新生成的方法相同.
+// 当没有 probability 参数的时候, triplet 只有在 type='o' 时 valid/truth 设置为 1 并加入 h2rt; 否则 valid/truth 设置为 0.
+// 当有 probability 参数的时候, triplet 的除上按上面的方式处理 type='o' 的三元组,其它三元组的 truth 设置为一个概率值 p, 并根据 p 来
+// 设置 valid=0/1; h2rt 不再看 type='o' 而是看 valid=1 来决定其内容.
 void read_probability_of_hidden_triplets()
 {
+    // 里面的语句执行的操作是重新生成 triplet2id 和 h2rt，todo 应该是用来应对 triplets 增加了隐三元组的情况
     if (probability_file[0] == 0)
     {
         Pair ent_rel_pair;
         
         triplet2id.clear();
-        for (int k = 0; k != entity_size; k++) h2rt[k].clear();
+        for (int k = 0; k != entity_size; k++) h2rt[k].clear();  // 重置 h2rt
         
         for (int k = 0; k != triplet_size; k++)
         {
-            triplet2id[triplets[k]] = k;
-            
+            triplet2id[triplets[k]] = k;   // 这里重新生成了 triplet2id todo 为什么要全量生成，不能增量生成吗？
+
+            // 这里重新生成了 h2rt, 而且只使用 type='o' 的那些,注意与后面的区别, 后面生成 h2rt 的依据是 valid=1, 其中有些的 type='h'
             if (triplets[k].type == 'o')
             {
                 triplets[k].valid = 1;
                 triplets[k].truth = 1;
                 ent_rel_pair.e = triplets[k].t;
                 ent_rel_pair.r = triplets[k].r;
-                h2rt[triplets[k].h].push_back(ent_rel_pair);
+                h2rt[triplets[k].h].push_back(ent_rel_pair);  // 重新生成 h2rt
             }
             else
             {
@@ -736,9 +743,10 @@ void read_probability_of_hidden_triplets()
                 triplets[k].truth = 0;
             }
         }
-        return;
+        return;  // 在使用默认 probability 参数的时候，这里就直接返回了
     }
-    
+
+    // 指定了 probability 的情况下，参数是 annotation.txt 文件, todo 它是在 kge.sh 脚本执行时生成的
     char s_head[MAX_STRING], s_tail[MAX_STRING], s_rel[MAX_STRING];
     double prob;
     Triplet triplet;
@@ -752,7 +760,8 @@ void read_probability_of_hidden_triplets()
     while (1)
     {
         if (fscanf(fi, "%s %s %s %lf", s_head, s_rel, s_tail, &prob) != 4) break;
-        
+
+        // 验证读取的三元组的 h, r, t 是否有效
         if (ent2id.count(s_head) == 0) continue;
         if (ent2id.count(s_tail) == 0) continue;
         if (rel2id.count(s_rel) == 0) continue;
@@ -761,19 +770,20 @@ void read_probability_of_hidden_triplets()
         triplet.t = ent2id[s_tail];
         triplet.r = rel2id[s_rel];
         
-        triplet2prob[triplet] = prob;
+        triplet2prob[triplet] = prob; // 组织为一个全局的 三元组:p 的映射
     }
     fclose(fi);
     
     for (int k = 0; k != triplet_size; k++)
     {
-        if (triplets[k].type == 'o')
+        if (triplets[k].type == 'o')  // type=o 的三元组在初始化的时候,truth 和 valid 都赋1
         {
             triplets[k].truth = 1;
             triplets[k].valid = 1;
             continue;
         }
-        
+
+        // 隐三元组的概率不低于门限的时候, 其 valid 记为 1, 否则 valid 记为 0.
         if (triplet2prob.count(triplets[k]) != 0 && triplet2prob[triplets[k]] >= triplet_threshold)
         {
             triplets[k].truth = triplet2prob[triplets[k]];
@@ -786,24 +796,26 @@ void read_probability_of_hidden_triplets()
         }
     }
     
-    for (int k = 0; k != entity_size; k++) h2rt[k].clear();
+    for (int k = 0; k != entity_size; k++) h2rt[k].clear(); // 重置 h2rt
     
     int h, r, t;
     Pair ent_rel_pair;
     for (int k = 0; k != triplet_size; k++)
     {
-        triplet2id[triplets[k]] = k;
-        
+        triplet2id[triplets[k]] = k;   // 全量构建
+
+        // 对 h2rt 只使用 valid=1 的那些三元组, 包括 type='h' 的, 与前面只使用 type='o' 不同
         if (triplets[k].valid == 0) continue;
         
         h = triplets[k].h; r = triplets[k].r; t = triplets[k].t;
         
         ent_rel_pair.e = t;
         ent_rel_pair.r = r;
-        h2rt[h].push_back(ent_rel_pair);
+        h2rt[h].push_back(ent_rel_pair);  // 重新生成 h2rt
     }
 }
 
+//
 void link_composition_rule(int id)
 {
     int tid, h, mid, t;
