@@ -380,6 +380,7 @@ void search_candidate_rules()
 }
 
 // 在 triplets 范围内，统计给定的 rule 的有效性(此时的 triplets 里都是 observed)
+// 计算方式: p/q，其中 q 表示发现组合路径 x-[r0]->y-[r1]->z 的次数，p 在 q 基础上，要求 x-[r]->z 也存在。(r0、r1、r 为 rule 中固定值)
 double precision_composition_rule(Rule rule)
 {
     int len, h, mid, t;
@@ -414,13 +415,14 @@ double precision_composition_rule(Rule rule)
     return p / q;
 }
 
-// 同上
+// 计算方式: p/q，其中 q 表示发现 x-[rp]->y 的次数，p 表示在 q 的基础上，还需要有 y-[rh]->x 存在。(rp、rh 为 rule 中固定值)
 double precision_symmetric_rule(Rule rule)
 {
     int h, t, rp, rh, len;
     double p = 0, q = 0;
     Triplet triplet;
-    
+
+    // 对称规则里应有 rp==rh, 这里分开写也没问题
     rp = rule.r_premise[0];
     rh = rule.r_hypothesis;
     
@@ -439,7 +441,7 @@ double precision_symmetric_rule(Rule rule)
     return p / q;
 }
 
-// 同上
+// 计算方式: p/q，其中 q 表示发现 x-[rp]->y 的次数，p 表示在 q 的基础上，还需要有 y-[rh]->x 存在。(rp、rh 为 rule 中固定值)
 double precision_inverse_rule(Rule rule)
 {
     int h, t, rp, rh, len;
@@ -464,7 +466,7 @@ double precision_inverse_rule(Rule rule)
     return p / q;
 }
 
-// 同上
+// 计算方式: p/q，其中 q 表示发现 x-[rp]->y 的次数，p 表示在 q 的基础上，还需要有 x-[rh]->y 存在。(rp、rh 为 rule 中固定值)
 double precision_subrelation_rule(Rule rule)
 {
     int h, t, rp, rh, len;
