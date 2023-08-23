@@ -19,6 +19,8 @@ class TrainDataset(Dataset):
         self.negative_sample_size = negative_sample_size
         self.mode = mode
         self.count = self.count_frequency(triples)
+        # true_head 是以 (relation, tail) 为 key, [tail] 为 value 的 dict; true_tail 以 (head, relation) 为 key, [head] 为 value.
+        # 其中 [tail] 和 [head] 都做了去重处理, 而且转化成了 numpy.array
         self.true_head, self.true_tail = self.get_true_head_and_tail(self.triples)
         
     def __len__(self):
@@ -36,12 +38,14 @@ class TrainDataset(Dataset):
         negative_sample_size = 0
 
         while negative_sample_size < self.negative_sample_size:
+            # 表示从 [0, self.nentity) 中随机取样 size 次
             negative_sample = np.random.randint(self.nentity, size=self.negative_sample_size*2)
             if self.mode == 'head-batch':
+                # in1d 用来测试 arr1 中的元素在在 arr2 中是否存在, 若存在, 则对应位置为 True, 反之亦反
                 mask = np.in1d(
-                    negative_sample, 
-                    self.true_head[(relation, tail)], 
-                    assume_unique=True, 
+                    negative_sample,
+                    self.true_head[(relation, tail)], # (relation, tail) 对应的 head list
+                    assume_unique=True, # can speed up
                     invert=True
                 )
             elif self.mode == 'tail-batch':
@@ -54,15 +58,19 @@ class TrainDataset(Dataset):
             else:
                 raise ValueError('Training batch mode %s not supported' % self.mode)
             negative_sample = negative_sample[mask]
+            # negative_sample_list 里的元素是 list
             negative_sample_list.append(negative_sample)
+            # negative_sample_size 却是 negative_sample.size 的累加
             negative_sample_size += negative_sample.size
-        
+
+        # 把 negative_sample_list 打平后截断
         negative_sample = np.concatenate(negative_sample_list)[:self.negative_sample_size]
 
         negative_sample = torch.from_numpy(negative_sample)
         
         positive_sample = torch.LongTensor(positive_sample)
-            
+
+        # 所以 positive_sample 是一个实际存在的三元组, 而 negative_sample 是节点列表(依 head 或 tail 与另两个元素组成真实存在的三元组)
         return positive_sample, negative_sample, subsampling_weight, self.mode
     
     @staticmethod

@@ -318,6 +318,7 @@ def main(args):
 
         # Set training dataloader iterator todo 深入了解一下 Dataloader 的实现
         train_dataloader_head = DataLoader(
+            # todo 注意这里 Dataset 的实现
             TrainDataset(train_triples, nentity, nrelation, args.negative_sample_size, 'head-batch'), 
             batch_size=args.batch_size,
             shuffle=True, 
@@ -393,7 +394,7 @@ def main(args):
         training_logs = []
 
         #Training Loop todo 这里的 max_steps 肯定跟之前对应着 kge.sh 里找出来的不一样，需要再审查一下
-        # todo 这里的 steps 跟之前的代码里的 epochs 是不是同一个概念？
+        # todo 这里的 steps 跟之前的代码里的 epochs 是不是同一个概念？ max_steps 是一个很大的数, 如150000
         for step in range(init_step, args.max_steps):
 
             log = kge_model.train_step(kge_model, optimizer, train_iterator, args)
