@@ -343,7 +343,7 @@ class KGEModel(nn.Module):
         
         model.eval()
         
-        if args.countries:
+        if args.countries: # 这步不会执行, 给出的数据集里不涉及对 countries 的处理
             #Countries S* datasets are evaluated on AUC-PR
             #Process test data for AUC-PR evaluation
             sample = list()
