@@ -287,10 +287,11 @@ def main(args):
     logging.info('#valid: %d' % len(valid_triples))
     test_triples = read_triple(os.path.join(args.data_path, 'test.txt'), entity2id, relation2id)
     logging.info('#test: %d' % len(test_triples))
+    # hidden 是潜在的未经验证计算的关系
     hidden_triples = read_triple(os.path.join(args.workspace_path, 'hidden.txt'), entity2id, relation2id)
     logging.info('#hidden: %d' % len(hidden_triples))
     
-    #All true triples， true 是指实际存在的，hidden 不算。todo 所里这里 hidden 是预测的内容？
+    #All true triples， true 是指实际存在的，hidden 不算。
     all_true_triples = train_original_triples + valid_triples + test_triples
 
     # 实例化 model todo 需要进一步深入 KGEModel 的定义
@@ -427,7 +428,7 @@ def main(args):
                 log_metrics('Training average', step, metrics)
                 training_logs = []
 
-            # 每隔一定 steps 进行一次 test todo train 里面做这种阶段性的 valid, 后面还有单独的 valid 步骤，有必要吗？
+            # 每隔一定 steps 进行一次 valid
             if args.do_valid and (step + 1) % args.valid_steps == 0:
                 logging.info('Evaluating on Valid Dataset...')
                 metrics, preds = kge_model.test_step(kge_model, valid_triples, all_true_triples, args)
