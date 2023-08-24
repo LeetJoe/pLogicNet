@@ -120,7 +120,8 @@ class KGEModel(nn.Module):
 
         #
         elif mode == 'head-batch':
-            tail_part, head_part = sample   # todo 这是什么表达方式？
+            # 在这种模式下, tail part 是 positive sample, head part 是 negative sample.
+            tail_part, head_part = sample
             batch_size, negative_sample_size = head_part.size(0), head_part.size(1)
             
             head = torch.index_select(
@@ -142,6 +143,7 @@ class KGEModel(nn.Module):
             ).unsqueeze(1)
             
         elif mode == 'tail-batch':
+            # 在这种模式下, head part 是 positive sample, tail part 是 negative sample. 与上面刚好对调.
             head_part, tail_part = sample
             batch_size, negative_sample_size = tail_part.size(0), tail_part.size(1)
             
