@@ -142,19 +142,21 @@ class TestDataset(Dataset):
         head, relation, tail = self.triples[idx]
 
         if self.mode == 'head-batch':
+            # 遍历实体列表, 对每个 rand_head, 若 (rand_head, relation, tail) 不存在就取 (0, rand_head), 否则取 (-1, head)
             tmp = [(0, rand_head) if (rand_head, relation, tail) not in self.triple_set
                    else (-1, head) for rand_head in range(self.nentity)]
-            tmp[head] = (0, head)
+            tmp[head] = (0, head) # 重置 head 位置的值
         elif self.mode == 'tail-batch':
             tmp = [(0, rand_tail) if (head, relation, rand_tail) not in self.triple_set
                    else (-1, tail) for rand_tail in range(self.nentity)]
             tmp[tail] = (0, tail)
         else:
             raise ValueError('negative batch mode %s not supported' % self.mode)
-            
+
+        # tmp 最终为一个 list, 第 i 个位置的值是 (0, i) 或 (-1, head/tail), 当 i=head/tail 时为 (0, head/tail)
         tmp = torch.LongTensor(tmp)            
-        filter_bias = tmp[:, 0].float()
-        negative_sample = tmp[:, 1]
+        filter_bias = tmp[:, 0].float() # filter_bias 应该是一个由 0 或 -1 构成的 list
+        negative_sample = tmp[:, 1]  # negative_sample 是实体 id 的列表
 
         positive_sample = torch.LongTensor((head, relation, tail))
             

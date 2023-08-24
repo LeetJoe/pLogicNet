@@ -282,6 +282,7 @@ class KGEModel(nn.Module):
 
         optimizer.zero_grad()
 
+        # 对使用 Dataset 构成的 Iterator 进行遍历, 每次得到的都是一个 batch
         positive_sample, negative_sample, subsampling_weight, mode = next(train_iterator)
 
         if args.cuda:
@@ -291,7 +292,7 @@ class KGEModel(nn.Module):
 
         negative_score = model((positive_sample, negative_sample), mode=mode)
 
-        if args.negative_adversarial_sampling:
+        if args.negative_adversarial_sampling: # todo 这里传参为 True
             #In self-adversarial sampling, we do not apply back-propagation on the sampling weight
             negative_score = (F.softmax(negative_score * args.adversarial_temperature, dim = 1).detach() 
                               * F.logsigmoid(-negative_score)).sum(dim = 1)
@@ -412,6 +413,7 @@ class KGEModel(nn.Module):
 
             with torch.no_grad():
                 for test_dataset in test_dataset_list:
+                    # 这里的 positive_sample, negative_sample 都是尺寸为 batch 的批量结果
                     for positive_sample, negative_sample, filter_bias, mode in test_dataset:
                         if args.cuda:
                             positive_sample = positive_sample.cuda()
@@ -423,12 +425,17 @@ class KGEModel(nn.Module):
 
                         batch_size = positive_sample.size(0)
 
+                        # 直接将 model 作为方法使用, 调用的实际上是 forward() 方法
                         score = torch.sigmoid(model((positive_sample, negative_sample), mode))
                         score += filter_bias
 
                         #Explicitly sort all the entities to ensure that there is no test exposure bias
+                        # torch.sort 就是按指定的维度进行排序, 返回的 valsort 是排序结果, 而 argsort 则是 valsort 原来的下标.
+                        # todo 这里 dim=1 表示, valsort 里各一级子项位置不变, 子项的内容(即二级子项)按降序排序; argsort 里各子项位
+                        #  置也不变, 子项的元素表示 valsort 各二级子项的原下标.
                         valsort, argsort = torch.sort(score, dim = 1, descending=True)
 
+                        # 取 postive sample 中真实存在的 head/tail
                         if mode == 'head-batch':
                             positive_arg = positive_sample[:, 0]
                         elif mode == 'tail-batch':
@@ -438,6 +445,8 @@ class KGEModel(nn.Module):
 
                         for i in range(batch_size):
                             #Notice that argsort is not ranking
+                            # argsort[i, :] 表示 score 的第 i 项(是一个列表)接降序排序后的下标排列
+                            # nonzero() 返回输入非 0 元素的坐标, 根据输入维度不同, 返回的维度也相应变化
                             ranking = (argsort[i, :] == positive_arg[i]).nonzero()
                             assert ranking.size(0) == 1
 
@@ -445,6 +454,7 @@ class KGEModel(nn.Module):
                             if mode == 'head-batch':
                                 prediction[i].append('h')
                                 prediction[i].append(ranking.item() + 1)
+                                # zip(a, b) 方法的作用是把 a, b 两个 list 按照对应位置连接成一个 (a_i, b_i) 的 tuple, 构成一个新的 list.
                                 ls = zip(argsort[i, 0:args.topk].data.cpu().numpy().tolist(), valsort[i, 0:args.topk].data.cpu().numpy().tolist())
                                 prediction[i].append(ls)
                             elif mode == 'tail-batch':
@@ -463,6 +473,7 @@ class KGEModel(nn.Module):
                                 'HITS@10': 1.0 if ranking <= 10 else 0.0,
                             })
 
+                        # list 的 + 就是打平拼接.
                         predictions += prediction
 
                         if step % args.test_log_steps == 0:
