@@ -487,7 +487,7 @@ def main(args):
 
             # Save the predictions on test data
             with open(local_path + '/pred_kge.txt', 'w') as fo:
-                for h, r, t, f, rk, l in preds:
+                for h, r, t, f, rk, l in preds:  # f 是类型, h 表示 head-batch, t 表示 tail-batch.
                     fo.write('{}\t{}\t{}\t{}\t{}\n'.format(id2entity[h], id2relation[r], id2entity[t], f, rk))
                     for e, val in l:
                         fo.write('{}:{:.4f} '.format(id2entity[e], val))
@@ -507,6 +507,7 @@ def main(args):
                 fo.write('{}\t{}\t{}\t{}\n'.format(id2entity[h], id2relation[r], id2entity[t], s))
 
     # todo 这个 evaluate_train 与 train 同时进行的 valid 有什么区别，为什么要单独设置一个参数来控制这部分评估工作？
+    # todo the test_step() method were also used in both valid and test stage.
     if args.evaluate_train:
         logging.info('Evaluating on Training Dataset...')
         metrics, preds = kge_model.test_step(kge_model, train_triples, all_true_triples, args)
