@@ -915,7 +915,8 @@ double train_epoch(double lr)
             int rule_id = triplets[k].rule_ids[i];
             rules[rule_id].grad += (triplets[k].truth - triplets[k].logit) / len;
         }
-        
+
+        // todo 损失函数
         error += (triplets[k].truth - triplets[k].logit) * (triplets[k].truth - triplets[k].logit);
         cn += 1;
     }
