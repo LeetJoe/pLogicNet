@@ -131,21 +131,37 @@ save_cmd('{}/cmd.txt'.format(path))
 
 # ------------------------------------------
 
+# todo 数据准备，此时的 train_augmented.txt 与 train.txt 是一样的
 os.system('cp {}/train.txt {}/train.txt'.format(dataset, path))
 os.system('cp {}/train.txt {}/train_augmented.txt'.format(dataset, path))
+
+# todo mln 的预处理，产生：hidden.txt 和 mln_saved.txt；这两个文件生成后就不再更新；
+#  mln_saved.txt 中保存了所有的 entities, relations, triplets(observed + hidden[此时全部 invalid]), rules;
+#  rule 格式示例（precision 就是 rule_support/body_support）：
+#    [规则类型]    [precision]  [head relation]            [body length]   [body relations]              [weight（全是0）]
+#    symmetric    0.136364     /tv/tv_program/spin_offs   1               /tv/tv_program/spun_off_from  0.000000
 os.system(cmd_mln(path, preprocessing=True))
 
 for k in range(iterations):
 
+    # todo 生成迭代子目录
     workspace_path = path + '/' + str(k)
     ensure_dir(workspace_path)
 
+    # todo 之前生成的 train_augmented.txt 作为 train_kge.txt 用于 kge 训练
     os.system('cp {}/train_augmented.txt {}/train_kge.txt'.format(path, workspace_path))
+    # todo 复制一份 hidden.txt 到迭代子目录
     os.system('cp {}/hidden.txt {}/hidden.txt'.format(path, workspace_path))
+    # todo 使用 train_kge.txt 进行 kge 模型训练；然后对 hidden.txt 打分，得到 annotation.txt；对 test 的预测结果保存于 pred_kge.txt；
+    #   其中 annotation.txt 内容与 hidden.txt 一一对应，只不过多了一个 kge score；
     os.system(cmd_kge(workspace_path, kge_model))
 
+    # todo 加载 mln_saved.txt 以及 annotation.txt；将分数达到阈值的 hidden 标记为 valid，与 observed 数据一同执行 MLN train；
+    #   产生 pred_mln.txt 和 rule.txt；其中 pred_mln.txt 内容与 annotation.txt 一一对应，但是 score 发生了更新；rule.txt 没有用；
     os.system(cmd_mln(path, workspace_path, preprocessing=False))
+    # todo 从 pred_mln.txt 中筛选数据，与 train.txt 合并保存在 train_augmented.txt 中，供下一轮 kge 训练使用；
     augment_triplet('{}/pred_mln.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
     os.system('cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path))
 
+    # todo 使用 pred_mln.txt 和 pred_kge.txt 进行本轮评估，结果保存在 result_kge_mln.txt 中；
     evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.txt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
