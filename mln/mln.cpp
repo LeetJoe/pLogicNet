@@ -896,8 +896,10 @@ double train_epoch(double lr)
     for (int k = 0; k != triplet_size; k++)
     {
         int len = int(triplets[k].rule_ids.size());
+        // todo 没有关联规则的三元组直接跳过
         if (len == 0) continue;
-        
+
+        // todo logit 作为 triplet 的属性初始化为 0，然后取关联规则的权重的均值，再 sigmoid 一下；
         triplets[k].logit = 0;
         for (int i = 0; i != len; i++)
         {
@@ -906,6 +908,8 @@ double train_epoch(double lr)
         }
         
         triplets[k].logit = sigmoid(triplets[k].logit);
+
+        // todo 所有关联规则的 grad 增加 (truth - logit)/len；truth 对 fact 来说就是 1，对 hidden 来说就是 annotation.txt 里的 score；
         for (int i = 0; i != len; i++)
         {
             int rule_id = triplets[k].rule_ids[i];
@@ -915,10 +919,12 @@ double train_epoch(double lr)
         error += (triplets[k].truth - triplets[k].logit) * (triplets[k].truth - triplets[k].logit);
         cn += 1;
     }
-    
+
+    // todo 使用本轮训练得到的 grad 更新规则的 weight；
     for (int k = 0; k != rule_size; k++) rules[k].weight += lr * rules[k].grad;
     
     return sqrt(error / cn);
+    // todo 整个训练结束后，取三元组的 logit 作为最终 score
 }
 
 void output_rules()
