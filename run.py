@@ -163,5 +163,5 @@ for k in range(iterations):
     augment_triplet('{}/pred_mln.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
     os.system('cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path))
 
-    # todo 使用 pred_mln.txt 和 pred_kge.txt 进行本轮评估，结果保存在 result_kge_mln.txt 中；
+    # todo 评估。使用 pred_mln.txt 和 pred_kge.txt 进行本轮评估，结果保存在 result_kge_mln.txt 中；
     evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.txt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
